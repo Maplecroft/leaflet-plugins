@@ -1,7 +1,8 @@
 L.BingLayer = L.TileLayer.extend({
 	options: {
 		subdomains: [0, 1, 2, 3],
-		attribution: 'Bing',
+		type: 'Aerial',
+		attribution: 'Bing'
 	},
 
 	initialize: function(key, options) {
@@ -10,12 +11,6 @@ L.BingLayer = L.TileLayer.extend({
 		this._key = key;
 		this._url = null;
 		this.meta = {};
-		this._update_tile = this._update;
-		this._update = function() {
-			if (this._url == null || !this._map) return;
-			this._update_attribution();
-			this._update_tile();
-		};
 		this.loadMetadata();
 	},
 
@@ -32,6 +27,7 @@ L.BingLayer = L.TileLayer.extend({
 	},
 
 	getTileUrl: function(p, z) {
+		var z = this._getZoomForUrl();
 		var subdomains = this.options.subdomains,
 			s = this.options.subdomains[(p.x + p.y) % subdomains.length];
 		return this._url.replace('{subdomain}', s)
@@ -41,7 +37,7 @@ L.BingLayer = L.TileLayer.extend({
 
 	loadMetadata: function() {
 		var _this = this;
-		var cbid = '_bing_metadata';
+		var cbid = '_bing_metadata_' + L.Util.stamp(this);
 		window[cbid] = function (meta) {
 			_this.meta = meta;
 			window[cbid] = undefined;
@@ -53,7 +49,7 @@ L.BingLayer = L.TileLayer.extend({
 			}
 			_this.initMetadata();
 		};
-		var url = "http://dev.virtualearth.net/REST/v1/Imagery/Metadata/Aerial?include=ImageryProviders&jsonp=" + cbid + "&key=" + this._key;
+		var url = "http://dev.virtualearth.net/REST/v1/Imagery/Metadata/" + this.options.type + "?include=ImageryProviders&jsonp=" + cbid + "&key=" + this._key;
 		var script = document.createElement("script");
 		script.type = "text/javascript";
 		script.src = url;
@@ -83,13 +79,19 @@ L.BingLayer = L.TileLayer.extend({
 		this._update();
 	},
 
+	_update: function() {
+		if (this._url == null || !this._map) return;
+		this._update_attribution();
+		L.TileLayer.prototype._update.apply(this, []);
+	},
+
 	_update_attribution: function() {
 		var bounds = this._map.getBounds();
 		var zoom = this._map.getZoom();
 		for (var i = 0; i < this._providers.length; i++) {
 			var p = this._providers[i];
 			if ((zoom <= p.zoomMax && zoom >= p.zoomMin) &&
-				this._intersects(bounds, p.bounds)) {
+					bounds.intersects(p.bounds)) {
 				if (!p.active)
 					this._map.attributionControl.addAttribution(p.attrib);
 				p.active = true;
@@ -99,16 +101,6 @@ L.BingLayer = L.TileLayer.extend({
 				p.active = false;
 			}
 		}
-	},
-
-	_intersects: function(obj1, obj2) /*-> Boolean*/ {
-		var sw = obj1.getSouthWest(),
-			ne = obj1.getNorthEast(),
-			sw2 = obj2.getSouthWest(),
-			ne2 = obj2.getNorthEast();
-
-		return (sw2.lat <= ne.lat) && (sw2.lng <= ne.lng) &&
-				(sw.lat <= ne2.lat) && (sw.lng <= ne2.lng);
 	},
 
 	onRemove: function(map) {
